@@ -12,9 +12,8 @@
 	    font-style: normal;
       }
       #pacman {
-        height:450px;
+        height:426px;
         width:342px;
-        margin:20px auto;
       }
       #shim { 
         font-family: BDCartoonShoutRegular; 
@@ -24,20 +23,37 @@
       h1 { font-family: BDCartoonShoutRegular; text-align:center; }
       body { width:342px; margin:0px auto; font-family:sans-serif; }
       a { text-decoration:none; }
+      #keyboard span {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        line-height: 30px;
+        vertical-align: middle;
+        background: #2b6977;
+        color: white;
+        text-align: center;
+        margin: 2px;
+        border-radius: 3px;
+      }
+      #keyboard span.highlight{
+        background: red;
+      }
+      #keyboard div:nth-child(2){
+        margin-left:10px;
+      }
+      #keyboard div:nth-child(3){
+        margin-left:20px;
+      }
     </style>
 
 </head>
 
 <body>
   
-  <div id="shim">shim for font face</div>
-
-  <h1>HTML5 Pacman</h1>
-
-  <a href="http://arandomurl.com/">Writeup</a> |
-  Code on <a href="http://arandomurl.com/">Github</a>
-
+  
   <div id="pacman"></div>
+  <div id="keyboard"></div>
+
   <script src="pacman.js"></script>
   <script src="modernizr-1.5.min.js"></script>
 

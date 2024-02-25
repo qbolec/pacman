@@ -276,6 +276,8 @@ Pacman.Ghost = function (game, map, colour) {
     };
 };
 
+const letterAt = (x,y) => String.fromCharCode(97+(x*7+y*5)%26);
+
 Pacman.User = function (game, map) {
     
     var position  = null,
@@ -323,8 +325,8 @@ Pacman.User = function (game, map) {
     
     function resetPosition() {
         position = {"x": 90, "y": 120};
-        direction = LEFT;
-        due = LEFT;
+        direction = NONE;
+        due = NONE;
     };
     
     function reset() {
@@ -333,8 +335,8 @@ Pacman.User = function (game, map) {
     };        
     
     function keyDown(e) {
-        if (typeof keyMap[e.keyCode] !== "undefined") { 
-            due = keyMap[e.keyCode];
+        if (/^[a-z]$/i.test(e.key)) { 
+            due = e.key.toLowerCase();
             e.preventDefault();
             e.stopPropagation();
             return false;
@@ -392,16 +394,29 @@ Pacman.User = function (game, map) {
             nextWhole   = null, 
             oldPosition = position,
             block       = null;
-        
-        if (due !== direction) {
-            npos = getNewCoord(due, position);
-            
-            if (isOnSamePlane(due, direction) || 
-                (onGridSquare(position) && 
-                 map.isFloorSpace(next(npos, due)))) {
-                direction = due;
-            } else {
-                npos = null;
+        const now = {x:Math.floor(position.x/10),y:Math.floor(position.y/10)};
+        const deltas = [{x:+1,y:0},{x:-1,y:0},{x:0,y:+1},{x:0,y:-1}]
+        const DIRECTIONS = [RIGHT,LEFT,DOWN,UP];
+        const positionsAround = deltas.map(delta => ({x:now.x+delta.x,y:now.y+delta.y}))
+        const lettersAround = positionsAround.map(pos => letterAt(pos.x,pos.y))
+        document.querySelectorAll('#keyboard span').forEach(e => {
+            e.className = lettersAround.find((letter,i) => 
+                letter==e.innerText.toLowerCase() && map.isFloorSpace(positionsAround[i])
+            )  ? 'highlight' : '';
+        })
+        if (due!==NONE) {
+            const desiredDir=[RIGHT,LEFT,DOWN,UP].find((dirCode,i) => due === lettersAround[i])
+            if(desiredDir){
+                npos = getNewCoord(desiredDir, position);
+                
+                if (isOnSamePlane(desiredDir, direction) || 
+                    (onGridSquare(position) && 
+                     map.isFloorSpace(next(npos, desiredDir)))) {
+                    direction = desiredDir;
+                    due = NONE;
+                } else {
+                    npos = null;
+                }
             }
         }
 
@@ -443,6 +458,8 @@ Pacman.User = function (game, map) {
             
             if (block === Pacman.PILL) { 
                 game.eatenPill();
+            } else {
+                game.eatenBiscuit();
             }
         }   
                 
@@ -615,13 +632,10 @@ Pacman.Map = function (size) {
 		            ctx.fillRect((j * blockSize), (i * blockSize), 
                                  blockSize, blockSize);
 
-                    ctx.fillStyle = "#FFF";
-                    ctx.arc((j * blockSize) + blockSize / 2,
-                            (i * blockSize) + blockSize / 2,
-                            Math.abs(5 - (pillSize/3)), 
-                            0, 
-                            Math.PI * 2, false); 
-                    ctx.fill();
+                    ctx.fillStyle = "orange";
+                    ctx.fillText(letterAt(j,i), j*blockSize, (i+1)*blockSize);
+
+                    
                     ctx.closePath();
                 }
 		    }
@@ -661,12 +675,10 @@ Pacman.Map = function (size) {
 		    ctx.fillRect((x * blockSize), (y * blockSize), 
                          blockSize, blockSize);
 
-            if (layout === Pacman.BISCUIT) {
-                ctx.fillStyle = "#FFF";
-		        ctx.fillRect((x * blockSize) + (blockSize / 2.5), 
-                             (y * blockSize) + (blockSize / 2.5), 
-                             blockSize / 6, blockSize / 6);
-	        }
+            if(layout !== Pacman.BLOCK){
+                ctx.fillStyle = layout === Pacman.BISCUIT ? "red" : "white";
+                ctx.fillText(letterAt(x,y), x*blockSize, (y+1)*blockSize);
+            }
         }
         ctx.closePath();	 
     };
@@ -748,6 +760,10 @@ Pacman.Audio = function(game) {
             files[name].play();
         }
     };
+    function stop(name){
+        files[name].pause();
+        files[name].currentTime = 0;
+    }
 
     function pause() { 
         for (var i = 0; i < playing.length; i++) {
@@ -762,11 +778,12 @@ Pacman.Audio = function(game) {
     };
     
     return {
-        "disableSound" : disableSound,
-        "load"         : load,
-        "play"         : play,
-        "pause"        : pause,
-        "resume"       : resume
+        disableSound,
+        load,
+        play,
+        pause,
+        resume,
+        stop,
     };
 };
 
@@ -833,16 +850,13 @@ var PACMAN = (function () {
     }
 
     function keyDown(e) {
-        if (e.keyCode === KEY.N) {
+        if (e.keyCode === KEY.N && state== WAITING) {
             startNewGame();
-        } else if (e.keyCode === KEY.S) {
-            audio.disableSound();
-            localStorage["soundDisabled"] = !soundDisabled();
         } else if (e.keyCode === KEY.P && state === PAUSE) {
             audio.resume();
             map.draw(ctx);
             setState(stored);
-        } else if (e.keyCode === KEY.P) {
+        } else if (e.keyCode === KEY.P && e.shiftKey ) {
             stored = state;
             setState(PAUSE);
             audio.pause();
@@ -1002,7 +1016,12 @@ var PACMAN = (function () {
 
         drawFooter();
     }
-
+    let whichSound = 0;
+    function eatenBiscuit(){
+        const name = whichSound++%2?'eating':'eating2';
+        audio.stop(name);
+        audio.play(name);
+    }
     function eatenPill() {
         audio.play("eatpill");
         timerStart = tick;
@@ -1043,8 +1062,9 @@ var PACMAN = (function () {
         audio = new Pacman.Audio({"soundDisabled":soundDisabled});
         map   = new Pacman.Map(blockSize);
         user  = new Pacman.User({ 
-            "completedLevel" : completedLevel, 
-            "eatenPill"      : eatenPill 
+            completedLevel, 
+            eatenPill,
+            eatenBiscuit,
         }, map);
 
         for (i = 0, len = ghostSpecs.length; i < len; i += 1) {
@@ -1132,11 +1152,11 @@ Pacman.MAP = [
 	[0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],
 	[0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
 	[0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-	[2, 2, 2, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 2, 2, 2],
+	[3, 3, 3, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 3, 3, 3],
 	[0, 0, 0, 0, 1, 0, 1, 0, 0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 0],
 	[2, 2, 2, 2, 1, 1, 1, 0, 3, 3, 3, 0, 1, 1, 1, 2, 2, 2, 2],
 	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
-	[2, 2, 2, 0, 1, 0, 1, 1, 1, 2, 1, 1, 1, 0, 1, 0, 2, 2, 2],
+	[3, 3, 3, 0, 1, 0, 1, 1, 1, 2, 1, 1, 1, 0, 1, 0, 3, 3, 3],
 	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
 	[0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
 	[0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
@@ -1267,3 +1287,18 @@ Object.prototype.clone = function () {
     }
     return newObj;
 };
+
+
+[
+    'QWERTYUIOP',
+    'ASDFGHJKL',
+    'ZXCVBNM',
+].forEach(row => {
+    const rowEl=document.createElement('div');
+    for(let i=0;i<row.length;++i){
+        const letterEl = document.createElement('span');
+        letterEl.innerText = row[i];
+        rowEl.appendChild(letterEl);
+    }
+    document.getElementById('keyboard').appendChild(rowEl);
+})
